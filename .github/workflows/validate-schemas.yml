@@ -1,0 +1,63 @@
+name: Validate JSON Schemas
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'schemas/**'
+      - 'examples/**'
+  pull_request:
+    paths:
+      - 'schemas/**'
+      - 'examples/**'
+
+jobs:
+  validate:
+    name: Validate schemas and examples
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install check-jsonschema
+        run: pip install check-jsonschema
+
+      - name: Verify schema files are valid JSON
+        run: |
+          echo "Checking schema files..."
+          for f in schemas/*.json; do
+            python3 -m json.tool "$f" > /dev/null && echo "  OK: $f" || { echo "  FAIL: $f is not valid JSON"; exit 1; }
+          done
+          echo "All schema files are valid JSON."
+
+      - name: Verify example files are valid JSON
+        run: |
+          echo "Checking example JSON files..."
+          for f in examples/*.json; do
+            python3 -m json.tool "$f" > /dev/null && echo "  OK: $f" || { echo "  FAIL: $f is not valid JSON"; exit 1; }
+          done
+          echo "All example JSON files are valid JSON."
+
+      - name: Validate manifest examples against manifest schema
+        run: |
+          echo "Validating manifest examples..."
+          check-jsonschema \
+            --schemafile schemas/manifest.schema.json \
+            examples/manifest-minimal.json \
+            examples/manifest-wordpress.json \
+            examples/manifest-xenforo.json
+          echo "All manifest examples pass schema validation."
+
+      - name: Validate tool example against tool schema
+        run: |
+          echo "Validating tool example..."
+          check-jsonschema \
+            --schemafile schemas/tool.schema.json \
+            examples/tool-readPost.json
+          echo "Tool example passes schema validation."

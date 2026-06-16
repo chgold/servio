@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/chgold/servio/v1.0.0/schemas/manifest.schema.json",
+  "title": "Servio Manifest",
+  "description": "Discovery manifest returned by GET /{prefix}/manifest. Describes plugin identity, OAuth endpoints, and available tools.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "name",
+    "version",
+    "api_version",
+    "capabilities",
+    "server",
+    "auth",
+    "tools"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Servio protocol schema version. MUST be '1.0'."
+    },
+    "name": {
+      "type": "string",
+      "description": "Plugin identifier slug (e.g. 'drupal-ai-connect').",
+      "minLength": 1,
+      "examples": ["my-platform-ai-connect", "drupal-ai-connect", "xenforo-ai-connect"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Plugin version in semver format (MAJOR.MINOR.PATCH).",
+      "pattern": "^\\d+\\.\\d+\\.\\d+",
+      "examples": ["1.0.0", "1.5.0", "2.3.1"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the plugin.",
+      "examples": ["Servio bridge for My Platform — manage content via AI"]
+    },
+    "api_version": {
+      "type": "string",
+      "const": "v1",
+      "description": "API version. MUST be 'v1'."
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Declared capability flags. Only set a flag to true when the capability is fully implemented.",
+      "required": ["tools", "resources", "prompts"],
+      "properties": {
+        "tools": {
+          "type": "boolean",
+          "description": "MUST be true when tools are defined in this manifest."
+        },
+        "resources": {
+          "type": "boolean",
+          "description": "MUST be false unless resource list and read endpoints are implemented."
+        },
+        "prompts": {
+          "type": "boolean",
+          "description": "MUST be false unless prompt list and get endpoints are implemented."
+        }
+      },
+      "additionalProperties": false
+    },
+    "server": {
+      "type": "object",
+      "description": "Base URL information for the tool execution API.",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL for all tool execution endpoints (e.g. 'https://example.com/api/ai-connect/v1')."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the API."
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "description": "OAuth 2.0 authentication configuration.",
+      "required": [
+        "type",
+        "flow",
+        "authorization_url",
+        "token_url",
+        "pkce_required",
+        "code_challenge_method",
+        "scopes"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "oauth2",
+          "description": "Authentication type. MUST be 'oauth2'."
+        },
+        "flow": {
+          "type": "string",
+          "const": "authorization_code",
+          "description": "OAuth 2.0 grant type. MUST be 'authorization_code'."
+        },
+        "authorization_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the OAuth 2.0 authorization (consent) screen."
+        },
+        "token_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL for token exchange (authorization_code → access_token) and token refresh."
+        },
+        "revoke_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL for token revocation. RECOMMENDED."
+        },
+        "pkce_required": {
+          "type": "boolean",
+          "const": true,
+          "description": "MUST be true. PKCE with S256 is mandatory."
+        },
+        "code_challenge_method": {
+          "type": "string",
+          "const": "S256",
+          "description": "PKCE challenge method. MUST be 'S256'."
+        },
+        "redirect_uri": {
+          "type": "string",
+          "description": "Default redirect URI. SHOULD be 'urn:ietf:wg:oauth:2.0:oob' for headless agent flows.",
+          "examples": ["urn:ietf:wg:oauth:2.0:oob"]
+        },
+        "redirect_uris": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of allowed redirect URIs.",
+          "examples": [["urn:ietf:wg:oauth:2.0:oob", "http://localhost/callback"]]
+        },
+        "scopes": {
+          "type": "object",
+          "description": "Map of scope name to human-readable description.",
+          "additionalProperties": { "type": "string" },
+          "examples": [
+            {
+              "read": "Read content and data",
+              "write": "Create and modify content",
+              "delete": "Delete content",
+              "admin": "Administrative access"
+            }
+          ]
+        },
+        "registered_clients": {
+          "type": "object",
+          "description": "Map of client_id to client_name for pre-registered AI agents. Agents use this to discover the correct client_id.",
+          "additionalProperties": { "type": "string" },
+          "examples": [
+            {
+              "claude": "Claude (Anthropic)",
+              "chatgpt": "ChatGPT (OpenAI)",
+              "gemini": "Gemini (Google)"
+            }
+          ]
+        },
+        "grant_types": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Supported OAuth grant types (optional, informational).",
+          "examples": [["authorization_code", "refresh_token"]]
+        },
+        "token_type": {
+          "type": "string",
+          "description": "Token type issued (optional, informational). Expected value: 'Bearer'.",
+          "examples": ["Bearer"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "tools": {
+      "type": "array",
+      "description": "Array of tool definitions exposed by this plugin. MUST NOT be empty.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/Tool"
+      }
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Plain-text instructions for the AI agent. Generated server-side. May be personalized per request.",
+      "examples": ["You have access to this site via Goldnat. Available tools: wordpress.searchPosts, wordpress.getPost."]
+    },
+    "usage": {
+      "type": "object",
+      "description": "Informational hints for tool invocation. Not normative.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "Tool": {
+      "type": "object",
+      "description": "A single tool definition.",
+      "required": ["name", "description", "input_schema"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Tool name following {platform}.{toolName} camelCase pattern.",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-zA-Z0-9]*$",
+          "examples": ["wordpress.searchPosts", "xenforo.getThread", "drupal.getNode"]
+        },
+        "description": {
+          "type": "string",
+          "description": "Tool description written for AI agent consumption. Explains purpose, return value, and when to call.",
+          "minLength": 10
+        },
+        "input_schema": {
+          "type": "object",
+          "description": "JSON Schema object defining tool input parameters.",
+          "required": ["type", "properties"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "object"
+            },
+            "properties": {
+              "type": "object",
+              "description": "Parameter definitions. Each key is a parameter name.",
+              "additionalProperties": {
+                "type": "object",
+                "required": ["type"],
+                "properties": {
+                  "type": { "type": "string" },
+                  "description": { "type": "string" },
+                  "minimum": { "type": "number" },
+                  "maximum": { "type": "number" },
+                  "enum": { "type": "array" },
+                  "default": {}
+                },
+                "additionalProperties": true
+              }
+            },
+            "required": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of required parameter names."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "wordpress.getPost",
+  "description": "Retrieve a single WordPress post by ID. Returns the full content, title, excerpt, author display name, publication date (ISO 8601), permalink URL, and list of category names. Use this when the user wants to read, view, or display a specific post. Call searchPosts first to obtain the post_id if you only have a title or keyword.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "post_id": {
+        "type": "integer",
+        "description": "WordPress post ID. Obtain this from searchPosts results. Must be a positive integer."
+      }
+    },
+    "required": ["post_id"]
+  }
+}

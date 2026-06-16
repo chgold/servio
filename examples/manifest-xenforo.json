@@ -1,0 +1,170 @@
+{
+  "_comment": "Real XenForo Goldnat plugin manifest — URLs sanitized to example.com. NOTE: XenForo uses a non-standard tool invocation format (body-based, not REST path). See usage.body_format and SPEC.md §10.1.",
+  "schema_version": "1.0",
+  "name": "xenforo-ai-connect",
+  "version": "1.2.26",
+  "description": "Goldnat for XenForo — manage forum content and users via AI",
+  "api_version": "v1",
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "server": {
+    "url": "https://example.com/api/ai-connect/v1",
+    "description": "XenForo AI Connect API"
+  },
+  "auth": {
+    "type": "oauth2",
+    "flow": "authorization_code",
+    "authorization_url": "https://example.com/oauth.php",
+    "token_url": "https://example.com/api/aiconnect-oauth",
+    "pkce_required": true,
+    "code_challenge_method": "S256",
+    "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+    "scopes": {
+      "read": "Read forum content and your profile",
+      "write": "Create and modify content",
+      "delete": "Delete content",
+      "admin": "Administrative access"
+    },
+    "grant_types": ["authorization_code", "refresh_token"],
+    "token_type": "Bearer",
+    "registered_clients": {
+      "claude": "Claude (Anthropic)",
+      "chatgpt": "ChatGPT (OpenAI)",
+      "gemini": "Gemini (Google)",
+      "grok": "Grok (xAI)",
+      "copilot": "Copilot (Microsoft)",
+      "perplexity": "Perplexity",
+      "meta-ai": "Meta AI",
+      "deepseek": "DeepSeek"
+    }
+  },
+  "tools": [
+    {
+      "name": "xenforo.searchThreads",
+      "description": "Search forum threads by keyword. Returns thread titles, authors, reply counts, forum node, and last-post dates. Use when the user wants to find discussions on a topic. Empty search returns the most recent threads.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Search keywords. Leave empty to retrieve latest threads."
+          },
+          "forum_id": {
+            "type": "integer",
+            "description": "Limit results to a specific forum node ID."
+          },
+          "since": {
+            "type": "string",
+            "description": "Time filter. Presets: today, yesterday, 1week, 1month. Dynamic: 3d, 6h, 2w, 1y. Specific date: YYYY-MM-DD. Use 'all' for all history."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results. Defaults to 10.",
+            "minimum": 1,
+            "maximum": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "xenforo.getThread",
+      "description": "Retrieve a single forum thread by ID, including its first post content and metadata. Use after searchThreads to read a specific thread.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "thread_id": {
+            "type": "integer",
+            "description": "XenForo thread ID."
+          }
+        },
+        "required": ["thread_id"]
+      }
+    },
+    {
+      "name": "xenforo.searchPosts",
+      "description": "Search forum posts by keyword or within a specific thread. Returns post content, author, date, and thread context.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Search keywords."
+          },
+          "thread_id": {
+            "type": "integer",
+            "description": "Limit search to a specific thread."
+          },
+          "since": {
+            "type": "string",
+            "description": "Time filter (same format as searchThreads.since)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results. Defaults to 10.",
+            "minimum": 1,
+            "maximum": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "xenforo.getCurrentUser",
+      "description": "Get the profile of the currently authenticated user: username, email, join date, post count, and group memberships. Use to answer 'who am I?' questions.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "translation.translate",
+      "description": "Translate text from one language to another. Accepts text of any length (automatically chunked). Returns the translated text. Use when the user explicitly asks to translate content.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to translate."
+          },
+          "target_language": {
+            "type": "string",
+            "description": "Target language code (e.g. 'es', 'fr', 'de', 'he')."
+          },
+          "source_language": {
+            "type": "string",
+            "description": "Source language code. If omitted, auto-detected."
+          }
+        },
+        "required": ["text", "target_language"]
+      }
+    },
+    {
+      "name": "translation.getSupportedLanguages",
+      "description": "List all language pairs supported by the configured translation provider. Use this before calling translate to verify the target language is available.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "instructions": "You are connected to a XenForo forum via Goldnat.\n\n## AVAILABLE TOOLS\nUse ONLY the tools listed in the 'tools' array. Do NOT claim capabilities beyond what is listed.\n\n## SMART USAGE\n- If a search returns no results → try with fewer filters (drop forum_id, relax date range, simplify search term).\n- To answer 'who am I?' → use getCurrentUser.\n- To find a thread and then read its posts → searchThreads first, then searchPosts with thread_id.\n- To translate forum content → getThread/searchPosts first, then translate the content.",
+  "usage": {
+    "_deviation": "XenForo uses body-based tool dispatch instead of REST path routing. See SPEC.md §10.1.",
+    "tools_endpoint": "https://example.com/api/aiconnect-tools",
+    "method": "POST",
+    "body_format": "mcp",
+    "body_example": {
+      "name": "xenforo.searchThreads",
+      "arguments": {
+        "search": "hello world",
+        "limit": 10
+      }
+    },
+    "headers": {
+      "Authorization": "Bearer {access_token}",
+      "Content-Type": "application/json"
+    }
+  }
+}

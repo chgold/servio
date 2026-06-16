@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "name": "my-platform-ai-connect",
+  "version": "1.0.0",
+  "description": "Servio bridge for My Platform",
+  "api_version": "v1",
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "server": {
+    "url": "https://example.com/api/ai-connect/v1",
+    "description": "My Platform AI Connect API"
+  },
+  "auth": {
+    "type": "oauth2",
+    "flow": "authorization_code",
+    "authorization_url": "https://example.com/oauth/authorize",
+    "token_url": "https://example.com/api/ai-connect/v1/oauth/token",
+    "revoke_url": "https://example.com/api/ai-connect/v1/oauth/revoke",
+    "pkce_required": true,
+    "code_challenge_method": "S256",
+    "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+    "scopes": {
+      "read": "Read content and data",
+      "write": "Create and modify content",
+      "delete": "Delete content",
+      "admin": "Administrative access"
+    }
+  },
+  "tools": [
+    {
+      "name": "myplatform.getContent",
+      "description": "Retrieve a content item by ID. Returns the title, body, author, and publication date. Use this when the user asks to read, view, or display a specific item.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Content item ID"
+          }
+        },
+        "required": ["id"]
+      }
+    }
+  ]
+}

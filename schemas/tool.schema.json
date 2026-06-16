@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/chgold/servio/v1.0.0/schemas/tool.schema.json",
+  "title": "Servio Tool Definition",
+  "description": "A single tool definition as it appears in the Servio manifest tools array. Tools are named operations that AI agents can invoke via the tool execution endpoint.",
+  "type": "object",
+  "required": ["name", "description", "input_schema"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Tool name following the {platform}.{toolName} camelCase convention. Platform is lowercase; tool name starts with a verb.",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-zA-Z0-9]*$",
+      "examples": [
+        "wordpress.searchPosts",
+        "wordpress.createPost",
+        "xenforo.searchThreads",
+        "xenforo.getThread",
+        "drupal.getNode",
+        "shopify.fulfillOrder",
+        "translation.translate"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Tool description written for AI agent consumption (not human developers). Should explain: (1) what the tool does, (2) what it returns, (3) when to call it, (4) any constraints.",
+      "minLength": 10,
+      "examples": [
+        "Search published posts by keyword. Returns up to 20 results with title, excerpt, URL, and publication date. Use this when the user asks to find, look up, or search for content on the site."
+      ]
+    },
+    "input_schema": {
+      "type": "object",
+      "description": "JSON Schema object defining the tool's input parameters. type MUST be 'object'.",
+      "required": ["type", "properties"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "object",
+          "description": "Root schema type. MUST be 'object'."
+        },
+        "properties": {
+          "type": "object",
+          "description": "Parameter definitions. Each key is a parameter name; each value is a JSON Schema fragment.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "JSON Schema type (string, integer, number, boolean, array, object)."
+              },
+              "description": {
+                "type": "string",
+                "description": "Parameter description for AI agent use."
+              },
+              "minimum": { "type": "number" },
+              "maximum": { "type": "number" },
+              "minLength": { "type": "integer" },
+              "maxLength": { "type": "integer" },
+              "enum": { "type": "array" },
+              "default": {}
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of required parameter names. Parameters not listed here are optional."
+        }
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search keywords"
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum results to return. Defaults to 10.",
+              "minimum": 1,
+              "maximum": 20
+            }
+          },
+          "required": ["query"]
+        }
+      ]
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "name": "wordpress.searchPosts",
+      "description": "Search published posts by keyword. Returns up to 20 results with title, excerpt, URL, and publication date. Use this when the user asks to find, look up, or search for content on the site. Empty query returns the most recent posts.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keywords. Leave empty to retrieve latest posts."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results to return. Defaults to 10.",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}

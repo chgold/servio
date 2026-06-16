@@ -1,0 +1,128 @@
+{
+  "_comment": "Real WordPress Goldnat plugin manifest — URLs sanitized to example.com",
+  "schema_version": "1.0",
+  "name": "goldt-webmcp-bridge",
+  "version": "2.0.0",
+  "description": "Goldnat for WordPress — manage content, users, and e-commerce via AI",
+  "api_version": "v1",
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "server": {
+    "url": "https://example.com/wp-json/goldt-webmcp-bridge/v1",
+    "description": "GoldT WebMCP Bridge API"
+  },
+  "auth": {
+    "type": "oauth2",
+    "flow": "authorization_code",
+    "authorization_url": "https://example.com/?goldtwmcp_oauth_authorize",
+    "token_url": "https://example.com/wp-json/goldt-webmcp-bridge/v1/oauth/token",
+    "revoke_url": "https://example.com/wp-json/goldt-webmcp-bridge/v1/oauth/revoke",
+    "pkce_required": true,
+    "code_challenge_method": "S256",
+    "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+    "scopes": {
+      "read": "Read posts, pages, and other content",
+      "write": "Create and update posts and pages",
+      "delete": "Delete posts and pages",
+      "manage_users": "View and manage user accounts"
+    },
+    "registered_clients": {
+      "claude": "Claude (Anthropic)",
+      "chatgpt": "ChatGPT (OpenAI)",
+      "gemini": "Gemini (Google)",
+      "grok": "Grok (xAI)",
+      "copilot": "Copilot (Microsoft)",
+      "perplexity": "Perplexity",
+      "meta-ai": "Meta AI",
+      "deepseek": "DeepSeek"
+    }
+  },
+  "tools": [
+    {
+      "name": "wordpress.searchPosts",
+      "description": "Search published posts by keyword. Returns up to 20 results with title, excerpt, URL, and publication date. Use this when the user asks to find, look up, or search for content on the site. Empty query returns the most recent posts.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keywords. Leave empty to retrieve the latest posts."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results to return. Defaults to 10.",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "wordpress.getPost",
+      "description": "Retrieve a single post by ID. Returns full content, title, excerpt, author, publication date, and URL. Use this when the user wants to read a specific post.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "post_id": {
+            "type": "integer",
+            "description": "WordPress post ID, obtained from searchPosts results."
+          }
+        },
+        "required": ["post_id"]
+      }
+    },
+    {
+      "name": "wordpress.createPost",
+      "description": "Create a new WordPress post. Requires write scope. Returns the new post ID and URL on success.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Post title."
+          },
+          "content": {
+            "type": "string",
+            "description": "Post body content (HTML or plain text)."
+          },
+          "status": {
+            "type": "string",
+            "description": "Post status: 'publish', 'draft', or 'pending'. Defaults to 'draft'.",
+            "enum": ["publish", "draft", "pending"]
+          }
+        },
+        "required": ["title", "content"]
+      }
+    },
+    {
+      "name": "wordpress.listCategories",
+      "description": "List all post categories with their IDs and slugs. Use this to discover available categories before creating a post or filtering search results.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "wordpress.getSiteInfo",
+      "description": "Retrieve basic site information: site name, tagline, URL, and WordPress version. Use this to answer questions about the site itself.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "instructions": "You have access to this WordPress site via Goldnat.\n\n## AVAILABLE TOOLS\nYou have ONLY these tools: wordpress.searchPosts, wordpress.getPost, wordpress.createPost, wordpress.listCategories, wordpress.getSiteInfo.\nDo NOT claim to have any capabilities beyond the tools listed above.\n\n## SEARCH TIPS\n- Empty search → returns latest content\n- No results? Try removing filters or broadening date range\n- 'Recent content' without date → try last week, then last month",
+  "usage": {
+    "tools_endpoint": "https://example.com/wp-json/goldt-webmcp-bridge/v1/tools/{tool_name}",
+    "example": "https://example.com/wp-json/goldt-webmcp-bridge/v1/tools/wordpress.searchPosts",
+    "method": "POST",
+    "headers": {
+      "Authorization": "Bearer {access_token}",
+      "Content-Type": "application/json"
+    }
+  }
+}

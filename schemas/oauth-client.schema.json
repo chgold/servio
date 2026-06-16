@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/chgold/servio/v1.0.0/schemas/oauth-client.schema.json",
+  "title": "Servio OAuth Client Registration",
+  "description": "Full OAuth 2.0 client registration record for a pre-registered AI agent. These records are stored server-side and determine which AI agents can initiate the OAuth flow without manual admin registration.",
+  "type": "object",
+  "required": ["client_id", "client_name", "redirect_uris", "allowed_scopes"],
+  "properties": {
+    "client_id": {
+      "type": "string",
+      "description": "Unique identifier for the AI agent. Used as the client_id parameter in OAuth requests.",
+      "minLength": 1,
+      "examples": ["claude", "chatgpt", "gemini", "grok", "copilot", "perplexity", "meta-ai", "deepseek"]
+    },
+    "client_name": {
+      "type": "string",
+      "description": "Human-readable display name for the AI agent.",
+      "minLength": 1,
+      "examples": ["Claude (Anthropic)", "ChatGPT (OpenAI)", "Gemini (Google)", "Grok (xAI)"]
+    },
+    "redirect_uris": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Allowed redirect URIs for this client. The OOB URI is always accepted. Localhost URIs may be included for development.",
+      "examples": [
+        ["urn:ietf:wg:oauth:2.0:oob"],
+        ["urn:ietf:wg:oauth:2.0:oob", "http://localhost/callback"]
+      ]
+    },
+    "allowed_scopes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["read", "write", "delete", "admin"]
+      },
+      "minItems": 1,
+      "description": "OAuth scopes this client is permitted to request. read is always included. write/delete/admin must be explicitly allowed.",
+      "examples": [
+        ["read"],
+        ["read", "write"],
+        ["read", "write", "delete", "admin"]
+      ]
+    },
+    "created_at": {
+      "type": "integer",
+      "description": "Unix timestamp when this client record was created.",
+      "examples": [1718534400]
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "client_id": "claude",
+      "client_name": "Claude (Anthropic)",
+      "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"],
+      "allowed_scopes": ["read", "write", "delete", "admin"],
+      "created_at": 1718534400
+    },
+    {
+      "client_id": "chatgpt",
+      "client_name": "ChatGPT (OpenAI)",
+      "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"],
+      "allowed_scopes": ["read", "write"],
+      "created_at": 1718534400
+    }
+  ]
+}

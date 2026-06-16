@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/chgold/servio/v1.0.0/schemas/error-response.schema.json",
+  "title": "Servio Tool Error Response",
+  "description": "Standard error envelope returned by the tool execution endpoint on failure (HTTP 4xx or 5xx). AI agents should parse 'code' for programmatic handling and 'message' for self-correction.",
+  "type": "object",
+  "required": ["success", "code", "message"],
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false for error responses. Use this flag to distinguish success from error."
+    },
+    "code": {
+      "type": "string",
+      "description": "Machine-readable error code. AI agents should use this for programmatic error handling.",
+      "examples": [
+        "unauthorized",
+        "forbidden",
+        "insufficient_scope",
+        "not_found",
+        "rate_limited",
+        "user_blocked",
+        "validation_error",
+        "internal_error"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable error description written to help the AI agent self-correct. Should explain what went wrong and, where possible, what the agent should do next.",
+      "minLength": 1,
+      "examples": [
+        "No authentication token provided. Use OAuth 2.0 flow.",
+        "This tool requires the 'write' scope. Please re-authorize with the required permissions.",
+        "Rate limit exceeded: 50 requests per minute. Retry after 47 seconds.",
+        "Post ID 999 not found."
+      ]
+    },
+    "data": {
+      "type": "object",
+      "description": "Optional supplemental data. Present for certain error codes (e.g. rate_limited includes retry timing).",
+      "properties": {
+        "retry_after": {
+          "type": "integer",
+          "description": "Seconds until the rate limit window resets. Present when code is 'rate_limited'.",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum allowed requests in the current window.",
+          "minimum": 1
+        },
+        "current": {
+          "type": "integer",
+          "description": "Current request count in the window.",
+          "minimum": 0
+        },
+        "status": {
+          "type": "integer",
+          "description": "HTTP status code (present in WordPress REST API error responses)."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "success": false,
+      "code": "unauthorized",
+      "message": "No authentication token provided. Use OAuth 2.0 flow."
+    },
+    {
+      "success": false,
+      "code": "rate_limited",
+      "message": "Rate limit exceeded: 50 requests per minute",
+      "data": {
+        "retry_after": 47,
+        "limit": 50,
+        "current": 51
+      }
+    },
+    {
+      "success": false,
+      "code": "insufficient_scope",
+      "message": "This tool requires the 'write' scope. Please re-authorize with the required permissions."
+    },
+    {
+      "success": false,
+      "code": "validation_error",
+      "message": "Required parameter 'query' is missing."
+    }
+  ]
+}
