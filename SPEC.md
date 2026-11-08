@@ -1,6 +1,6 @@
 # Servio Protocol Specification
 
-**Version:** 1.0.0 | **Status:** Stable | **Date:** 2026-06-16
+**Version:** 1.1.0 | **Status:** Stable | **Date:** 2026-11-08
 
 ---
 
@@ -118,7 +118,7 @@ Every compliant plugin MUST implement all of the following endpoints:
 | `/{prefix}/manifest` | GET | None | Discovery manifest |
 | `/{prefix}/oauth/authorize` | GET | None | OAuth consent screen |
 | `/{prefix}/oauth/token` | POST | None | Token exchange and refresh |
-| `/{prefix}/oauth/revoke` | POST | None | Token revocation |
+| `/{prefix}/oauth/revoke` | POST | None | Token revocation (RFC 7009) — declared as `auth.revocation_url` |
 | `/{prefix}/v1/tools/{tool_name}` | POST | Bearer | Tool execution |
 
 ---
@@ -162,7 +162,7 @@ The manifest is a JSON object that fully describes the plugin. It is the sole co
     "flow": "authorization_code",
     "authorization_url": "https://example.com/oauth/authorize",
     "token_url": "https://example.com/api/ai-connect/v1/oauth/token",
-    "revoke_url": "https://example.com/api/ai-connect/v1/oauth/revoke",
+    "revocation_url": "https://example.com/api/ai-connect/v1/oauth/revoke",
     "pkce_required": true,
     "code_challenge_method": "S256",
     "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
@@ -244,7 +244,8 @@ The manifest is a JSON object that fully describes the plugin. It is the sole co
 | `auth.flow` | string | ✅ | MUST be `"authorization_code"`. |
 | `auth.authorization_url` | string (URI) | ✅ | URL of the OAuth consent screen. |
 | `auth.token_url` | string (URI) | ✅ | URL for token exchange and refresh. |
-| `auth.revoke_url` | string (URI) | — | URL for token revocation. RECOMMENDED. |
+| `auth.revocation_url` | string (URI) | ✅ (since 1.1) | Absolute **https** URL of the RFC 7009 revocation endpoint (Section 5.2, Step 5). MUST be reachable without redirects. Platforms that hold tokens on a user's behalf call it when access is cut on their side. |
+| `auth.revoke_url` | string (URI) | — | **Deprecated** alias of `revocation_url` (1.0). Clients SHOULD read `revocation_url` first, then `revocation_endpoint`, then `revoke_url`. |
 | `auth.pkce_required` | boolean | ✅ | MUST be `true`. |
 | `auth.code_challenge_method` | string | ✅ | MUST be `"S256"`. |
 | `auth.redirect_uri` | string | — | Default redirect URI. SHOULD include `"urn:ietf:wg:oauth:2.0:oob"`. |
@@ -367,23 +368,49 @@ The server MUST:
 
 **Response**: Same format as Step 3 success response.
 
-#### Step 5 — Token Revocation
+#### Step 5 — Token Revocation (RFC 7009)
 
 ```http
-POST /{prefix}/oauth/revoke
+POST {auth.revocation_url}
 Content-Type: application/x-www-form-urlencoded
 
 token={access_token_or_refresh_token}
-&client_id={client_id}
+&token_type_hint={access_token|refresh_token}   (optional)
+&client_id={client_id}                          (optional)
 ```
 
-The server MUST revoke both the access token and its associated refresh token when either is presented.
+Requirements (MUST unless stated):
 
-**Success response (`200 OK`)**:
+| # | Requirement |
+|---|---|
+| 1 | A dedicated `POST` route, declared in the manifest as `auth.revocation_url` (absolute https URL, no redirects). MUST accept `application/x-www-form-urlencoded`; SHOULD also accept `application/json`. |
+| 2 | **No authentication.** Possession of the token is the authorisation (public PKCE clients). The route MUST NOT require a Bearer token, session cookie, API key or CSRF token. |
+| 3 | `token` is required. `token_type_hint` is optional and only changes which token type is looked up first. |
+| 4 | `token` may be the access token **or** the refresh token of a pair. Either one revokes the **whole pair** — neither half may keep working. |
+| 5 | Implementations storing token hashes MUST look up by hash first and MAY fall back to plaintext for legacy rows. |
+| 6 | Response `200 OK` for any well-formed request — including unknown or already-revoked tokens — so the endpoint cannot be used to probe token validity. `400` with error `invalid_request` only when `token` is missing. |
+| 7 | Revocation takes effect **immediately**: the next tool call with the access token MUST get `401`, and a refresh with the refresh token MUST fail (`invalid_grant`). Secondary token registries/caches MUST be updated in the same request. |
+| 8 | If the plugin keeps an audit log, the revocation SHOULD be recorded (never log the token value). |
+
+Callers (e.g. agent platforms) typically send two requests per connection: the refresh token first, then the access token; any `2xx` is treated as success.
+
+For `auth.type = "mcp_token_via_host_oauth"` plugins the endpoint revokes the plugin-issued token only — never the host platform's own credentials.
+
+**Success response (`200 OK`)** — body is informational:
 
 ```json
 {"revoked": true}
 ```
+
+**Conformance test** (each step MUST hold):
+1. manifest → `auth.revocation_url` present (https).
+2. obtain a token pair; a tool call succeeds.
+3. revoke the refresh token (`token_type_hint=refresh_token`) → `200`.
+4. tool call with the access token of the same pair → `401`.
+5. refresh with the revoked refresh token → fails.
+6. `token=unknown` → `200`.
+7. no `token` → `400 invalid_request`.
+8. new pair, revoke by access token without hint → refresh also fails.
 
 ### 5.3 Bearer Token Usage
 
@@ -770,3 +797,10 @@ A plugin is compliant with Servio Protocol v1.0 when it satisfies all CRITICAL a
 ---
 
 *Servio Protocol is an open standard. Contributions and corrections are welcome via pull request to [github.com/chgold/servio](https://github.com/chgold/servio).*
+
+---
+
+## Changelog
+
+- **1.1.0 (2026-11-08)** — `auth.revocation_url` REQUIRED; Section 5.2 Step 5 rewritten as an RFC 7009 contract with a conformance test; `auth.revoke_url` deprecated as an alias.
+- **1.0.0 (2026-06-16)** — initial specification.
