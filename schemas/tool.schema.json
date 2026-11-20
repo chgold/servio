@@ -28,6 +28,16 @@
         "Search published posts by keyword. Returns up to 20 results with title, excerpt, URL, and publication date. Use this when the user asks to find, look up, or search for content on the site."
       ]
     },
+    "confirmation": {
+      "type": "string",
+      "enum": ["required", "conditional", "none"],
+      "description": "Since 1.2.0 (§6.5.1): the tool runs only after the USER confirms (required), or only for some argument values (conditional). Absent = none."
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["financial", "destructive"],
+      "description": "Since 1.2.0 (§6.5.1): why the tool needs the user's confirmation."
+    },
     "input_schema": {
       "type": "object",
       "description": "JSON Schema object defining the tool's input parameters. type MUST be 'object'.",

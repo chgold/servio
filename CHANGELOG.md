@@ -7,6 +7,29 @@ Version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ---
 
+## [1.2.0] — 2026-11-20
+
+### Added
+- §5.7 Redirect URI validation (normative, RFC 9700 / OAuth 2.1 / RFC 8252 §7.3): exact string match against the client's registered URIs at the authorization request, at the approve/deny step and at the token endpoint; port-only loopback exception for registered native-client loopback URIs; never redirect to an unvalidated URI (error page instead, also for deny); an authorization request never registers or adds a URI; auto-registered client aliases get OOB only; PKCE `S256` only; 7-step conformance test.
+- §9.11 Agent access tokens are accepted only on the plugin's own agent routes.
+- §9.12 Consent and confirmation forms: `POST` + session + CSRF token, Bearer refused.
+- Compliance rules RULE-013 … RULE-017.
+
+### Changed
+- §5.2 Step 3: token exchange MUST verify `client_id` and an identical `redirect_uri` (OOB codes may omit it); errors never `200`.
+- §7.3: OAuth error codes now carry normative HTTP status (`400`, `401` for `invalid_client`, `500` for `server_error`) plus `unauthorized_client`, `unsupported_grant_type`, `invalid_scope`.
+- §9.8 points to §5.7 (the old "loopback MAY be accepted" wording is removed); §9.10 `state` returned unchanged.
+- §6.5.1 user confirmation is MUST for destructive/financial tools; `confirm_url`/`status_url` on the manifest's host; confirm form needs session + CSRF + `POST`; the confirming user must own the pending action; autonomy grants are created by the user only.
+
+### Added (user confirmation)
+- §6.5.1 User confirmation (`user-confirm-v1`) for destructive and financial tools: manifest `confirmation` (`required` / `conditional`) + `risk` per tool, top-level `confirmation` descriptor, 202 `confirmation_required` response with `preview`, `confirm_url`, `status_url`, user-only confirm step, single use, replay-safe re-submission, optional autonomy grant, and the rules agents must follow.
+- Error codes `confirmation_required` (202), `confirmation_mismatch` (409), `confirmation_rejected` / `confirmation_expired` (410).
+
+## [1.1.0] — 2026-11-08
+
+### Added
+- `auth.revocation_url` REQUIRED; §5.2 Step 5 rewritten as an RFC 7009 token revocation contract with a conformance test. `auth.revoke_url` deprecated as an alias.
+
 ## [1.0.0] — 2026-06-16
 
 Initial public release of the Servio Protocol specification.

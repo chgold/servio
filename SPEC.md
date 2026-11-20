@@ -1,6 +1,6 @@
 # Servio Protocol Specification
 
-**Version:** 1.1.0 | **Status:** Stable | **Date:** 2026-11-08
+**Version:** 1.2.0 | **Status:** Stable | **Date:** 2026-11-20
 
 ---
 
@@ -310,6 +310,12 @@ The server presents a consent screen. The user authenticates and approves. On ap
 - Store the `code_challenge` for verification in Step 3
 - Bind the code to the `client_id` and `redirect_uri`
 - Expire the authorization code within 10 minutes
+- Validate `client_id` and `redirect_uri` (exact match, §5.7) **before** showing the consent screen and again before acting on the user's approve **or** deny answer
+- Return `state` unchanged with the code (or with the error) when the redirect URI is valid
+
+**Server MUST NOT**:
+- Redirect the browser to a `redirect_uri` that failed validation — not on error, not on deny. Show an error page instead (§5.7.3)
+- Add the requested `redirect_uri` to a client's registration as a side effect of an authorization request
 
 #### Step 3 — Token Exchange
 
@@ -326,8 +332,10 @@ grant_type=authorization_code
 
 The server MUST:
 - Verify `code_verifier` against stored `code_challenge`: `BASE64URL(SHA256(code_verifier)) == code_challenge`
+- Verify that `client_id` equals the client the code was issued to, and that `redirect_uri` is **identical** (string comparison) to the value bound to the code. A code issued for the OOB URI MAY be exchanged without `redirect_uri`; for any other URI the parameter is REQUIRED. Any mismatch → `400 invalid_grant`
 - Mark the authorization code as used (single-use)
 - Return access and refresh tokens on success
+- Answer every error with a 4xx status per §7.3 — never `200 OK` with an `error` body
 
 **Success response (`200 OK`)**:
 
@@ -451,6 +459,44 @@ The `auth.registered_clients` field in the manifest exposes the registered clien
 
 Implementations MAY accept variant `client_id` values (e.g. `claude_client`, `gemini_ai`) by normalizing them to the canonical base ID. Accepted variants SHOULD be auto-registered as aliases.
 
+### 5.7 Redirect URI Validation (since 1.2.0)
+
+This section is normative and follows [RFC 9700](https://www.rfc-editor.org/rfc/rfc9700) §2.1 / §4.1 (OAuth 2.0 Security Best Current Practice), OAuth 2.1 §7.5 and [RFC 8252](https://www.rfc-editor.org/rfc/rfc8252) §7.3. It replaces the looser wording of §9.8 in 1.0/1.1.
+
+#### 5.7.1 Exact match
+
+- Every client has a list of **registered** redirect URIs. The server MUST compare the `redirect_uri` of an authorization request with that list by **exact string comparison** (no prefix, substring, wildcard, case-folding or path-normalisation match).
+- The only exception: a registered **loopback** URI of a **native** client (`http://127.0.0.1/...`, `http://[::1]/...`, `http://localhost/...`) matches a request URI that differs from it **only in the port** (RFC 8252 §7.3). The scheme, host and path MUST still match exactly. This exception MUST NOT apply to any non-loopback host.
+- `urn:ietf:wg:oauth:2.0:oob` is accepted only when it is registered for the client (all pre-registered agents of §1.3 register it). An absent `redirect_uri` means OOB and is accepted only when OOB is registered.
+- The same check runs at the authorization request, when the user's approve / deny answer is processed, and at the token endpoint (Step 3: identical to the value bound to the code).
+
+#### 5.7.2 Registration
+
+- Redirect URIs are registered by the site administrator or by a dedicated registration endpoint. An authorization request MUST NOT register, add or change a redirect URI.
+- Implementations that auto-register unknown or variant `client_id` values (§5.6) MUST give the new client **only** the OOB URI (or copy the URIs of the canonical client it aliases) — never the URI from the request.
+
+#### 5.7.3 Errors
+
+- If `client_id` is unknown or `redirect_uri` does not match, the server MUST NOT redirect. It MUST answer with an error page (`400`) shown to the user (RFC 6749 §4.1.2.1).
+- Only after the redirect URI is validated MAY the server report other errors (`invalid_request`, `access_denied`, `unsupported_response_type`, `invalid_scope`) by redirecting to it, with `error`, `error_description` and the unchanged `state`.
+- A deny / cancel button on the consent screen MUST follow the same rule: no redirect to an unvalidated URI.
+- The server MUST NOT accept any other request parameter (e.g. `return_to`, `next`, `redirect`) as a redirect target after login or consent unless it is a same-host relative path; anything else is an open redirect.
+
+#### 5.7.4 PKCE
+
+`code_challenge_method` MUST be `S256`. A request without it, or with any other value (including `plain`), MUST be rejected with `invalid_request` (redirected only if the redirect URI is valid). Servers MUST read the method value without lossy filtering (e.g. a filter that strips digits turns `S256` into `S`).
+
+#### 5.7.5 Conformance test
+
+Each step MUST hold (a registered client `C` with registered URI `R`):
+1. authorize with `client_id=C&redirect_uri=https://attacker.example/cb` → `400` error page, no `Location` header to that host, no consent screen.
+2. same with the deny answer submitted → no redirect to the unregistered URI.
+3. authorize with `redirect_uri=R` + a random `state` → after approval, the code is delivered to `R` with the same `state`.
+4. token exchange with that code and a different `redirect_uri` (or another `client_id`) → `400 invalid_grant`; the code is not consumed by the failed attempt or is invalid for every later exchange.
+5. `code_challenge_method=plain` → rejected.
+6. after steps 1–2, the client's registered URIs are unchanged.
+7. token endpoint with `grant_type=authorization_code&code=garbage` → `400` + `{"error":"invalid_grant"}`; no client → `400`/`401` `invalid_client` / `invalid_request` — never `200`.
+
 ---
 
 ## 6. Tools
@@ -549,6 +595,62 @@ To confirm, the agent re-submits the original request with `confirmation_id` add
 }
 ```
 
+#### 6.5.1 User confirmation (`user-confirm-v1`, since 1.2.0)
+
+For **destructive and financial** tools (refunds, deletions, cancelling orders, risky site
+administration) a server MUST require the **user's own confirmation**, enforced in code — the
+agent can never confirm by itself (an agent-supplied `confirm: true` or similar flag is NOT a
+confirmation). Servers:
+
+- Mark the tool in the manifest with `"confirmation": "required"` (or `"conditional"` when only some
+  argument values need it, e.g. `status=cancelled`) and `"risk": "financial" | "destructive"`, and
+  describe the flow in a top-level `confirmation` object:
+  `{ "flow": "user-confirm-v1", "pending_status_code": 202, "error_code": "confirmation_required",
+  "status_url_template": "…/{confirmation_id}", "confirmed_by": "user", "tools": [ … ] }`.
+- Answer the first call with `202` and this body (the 6.5 fields plus `code`, `preview`,
+  `confirm_url`, `status_url`; the same keys repeated under `data`):
+
+```json
+{
+  "success": false,
+  "status": "pending_confirmation",
+  "code": "confirmation_required",
+  "message": "Not executed. Show the user the preview and confirm_url …",
+  "confirmation_id": "conf_a1b2c3…",
+  "confirm_url": "https://site.example/wp-admin/users.php?page=goldtwmcp-ai-actions&confirmation_id=conf_a1b2c3…",
+  "status_url": "https://site.example/wp-json/goldt-webmcp-bridge/v1/confirmations/conf_a1b2c3…",
+  "expires_at": "2026-11-15T09:00:00Z",
+  "tool": "edd.refundOrder",
+  "risk": "financial",
+  "preview": { "order_id": 42, "total": 49.0, "currency": "USD", "gateway": "stripe" }
+}
+```
+
+- MUST put `confirm_url` and `status_url` on the **same host** as the manifest (never a third-party
+  or agent-supplied host).
+- MUST run the action **only** after the user confirms on `confirm_url` in their own signed-in session:
+  the approve / deny form MUST require the platform's session cookie **and** a CSRF token bound to
+  that session (WordPress nonce, XenForo `_xfToken`, Drupal form token, Moodle `sesskey`, …), MUST use
+  `POST`, and MUST refuse requests carrying a Bearer token or API key. A `GET` of `confirm_url` only
+  shows the preview; it never approves.
+- MUST bind the pending action to user + tool + arguments hash + client; expire it (15 min
+  RECOMMENDED, at most 24 h); execute it at most once. The confirming user MUST be the user the
+  pending action belongs to. Re-submitting with `confirmation_id` (as in 6.5) or `GET status_url` MUST
+  NOT execute anything — it reports: still pending → `202`; executed → the stored result;
+  rejected / expired → `410 confirmation_rejected` / `confirmation_expired`; other tool or other
+  arguments → `409 confirmation_mismatch`.
+- Ignore any agent-supplied `confirm: true` argument for these tools.
+- MAY offer a standing **autonomy grant**: the user lets one client run one tool without asking (per
+  user, per tool, per client, revocable at any time by the user, audited). Then the call executes
+  directly and answers normally. A grant MUST be created by the user in their session (same CSRF
+  rule) — never by the agent.
+
+**Agents MUST:** show the user the `preview` and the `confirm_url`, say that nothing has happened
+yet, and wait. Never re-call the tool on your own, never loop or poll aggressively, never claim it
+was done. When the user says they confirmed, call the same tool with the same arguments plus
+`confirmation_id` (or `GET status_url`) to get the real result. A rejected or expired confirmation is
+final — ask the user before starting again.
+
 ### 6.6 Writing Tool Descriptions for AI Agents
 
 Tool descriptions are the primary signal AI agents use to decide which tool to call. Write them for agents, not humans.
@@ -631,17 +733,23 @@ For errors with supplemental data:
 | `user_blocked` | 403 | The authenticated user has been blocked |
 | `validation_error` | 422 | Input parameters failed schema validation |
 | `internal_error` | 500 | Server-side error |
+| `confirmation_required` | 202 | Not executed — waiting for the user's confirmation (6.5.1) |
+| `confirmation_mismatch` | 409 | `confirmation_id` used with another tool or other arguments |
+| `confirmation_rejected` / `confirmation_expired` | 410 | The user rejected it / it expired; final |
 
 ### 7.3 OAuth Error Codes
 
-OAuth token endpoint errors follow [RFC 6749 Section 5.2](https://www.rfc-editor.org/rfc/rfc6749#section-5.2) error codes:
+OAuth token endpoint errors follow [RFC 6749 Section 5.2](https://www.rfc-editor.org/rfc/rfc6749#section-5.2) error codes. The HTTP status is normative (since 1.2.0): an error MUST NOT be answered with `200 OK`, and the body MUST be JSON with `Content-Type: application/json` and `Cache-Control: no-store`.
 
-| Code | Meaning |
-|---|---|
-| `invalid_grant` | Authorization code invalid, expired, already used, or PKCE verification failed |
-| `invalid_client` | Client ID mismatch or unknown client |
-| `invalid_request` | Missing required OAuth parameter |
-| `server_error` | Server-side failure during token issuance |
+| Code | HTTP status | Meaning |
+|---|---|---|
+| `invalid_request` | 400 | Missing / duplicated / malformed parameter, or `code_challenge_method` not `S256` |
+| `invalid_client` | 401 (400 when the client authenticated by no credential and is simply unknown) | Client ID mismatch or unknown client. With `401`, include `WWW-Authenticate` |
+| `invalid_grant` | 400 | Authorization code / refresh token invalid, expired, revoked, already used, issued to another client, `redirect_uri` not identical, or PKCE verification failed |
+| `unauthorized_client` | 400 | Client not allowed to use this grant type |
+| `unsupported_grant_type` | 400 | Unknown `grant_type` |
+| `invalid_scope` | 400 | Requested scope invalid or exceeds the grant |
+| `server_error` | 500 | Server-side failure during token issuance |
 
 **OAuth error response format** (RFC 6749):
 ```json
@@ -742,7 +850,7 @@ AI agents SHOULD request only the scopes necessary for the current session. Impl
 
 ### 9.8 Redirect URI Validation
 
-During the authorization request, the server MUST validate that `redirect_uri` matches a pre-approved URI for the `client_id`. The OOB redirect (`urn:ietf:wg:oauth:2.0:oob`) MUST always be accepted. Loopback URIs (`http://localhost:*`, `http://127.0.0.1:*`) MAY be accepted for development but SHOULD NOT be accepted in strict production mode.
+See §5.7 (normative since 1.2.0): exact string match against the client's registered URIs at the authorization request, at the approve / deny step and at the token endpoint; the port-only loopback exception applies only to registered loopback URIs of native clients; never redirect to an unvalidated URI (also not on error or deny); an authorization request never registers a URI.
 
 ### 9.9 Authorization Code Single Use
 
@@ -750,7 +858,15 @@ Authorization codes MUST be single-use. The server MUST mark a code as used imme
 
 ### 9.10 State Parameter
 
-AI agents SHOULD include a random `state` parameter in authorization requests to prevent CSRF attacks. Implementations SHOULD validate the `state` parameter on callback.
+AI agents SHOULD include a random `state` parameter in authorization requests to prevent CSRF attacks and MUST verify it on callback. Servers MUST return `state` unchanged — with the code and with every error redirect (§5.7.3).
+
+### 9.11 Agent Tokens Only on Servio Routes (since 1.2.0)
+
+An access token issued by a Servio plugin MUST authenticate **only** that plugin's own agent endpoints (manifest-declared tool / resource / revocation routes). The platform's native API, admin / AJAX routes, pages and the plugin's own browser-only screens (consent, confirmation, token management) MUST refuse it (`401`/`403`, or treat the request as anonymous). Otherwise a token scoped to a few tools becomes a full login for the user.
+
+### 9.12 User Confirmation Forms (since 1.2.0)
+
+The consent screen (§5.2 Step 2) and the confirmation screen (§6.5.1) change state only on `POST` with the platform's session cookie **and** a CSRF token bound to that session. They MUST refuse Bearer / API-key requests and MUST NOT approve on `GET`.
 
 ---
 
@@ -793,6 +909,11 @@ A plugin is compliant with Servio Protocol v1.0 when it satisfies all CRITICAL a
 | RULE-010 | MAJOR | Access tokens MUST expire between 1 hour and 24 hours |
 | RULE-011 | MAJOR | Refresh tokens MUST expire between 7 days and 90 days |
 | RULE-012 | MAJOR | Per-user rate limiting MUST be implemented on all tool endpoints |
+| RULE-013 | CRITICAL | `redirect_uri` exact match against registered URIs at authorize, approve/deny and token (§5.7); never redirect to an unvalidated URI |
+| RULE-014 | CRITICAL | `code_challenge_method` other than `S256` MUST be rejected (§5.7.4) |
+| RULE-015 | MAJOR | Token endpoint errors use RFC 6749 §5.2 codes with `400` / `401` (never `200`) (§7.3) |
+| RULE-016 | CRITICAL | Destructive / financial tools run only after the user's own confirmation (§6.5.1): same-host `confirm_url`, session + CSRF, single use, bound to user + tool + arguments + client |
+| RULE-017 | CRITICAL | Agent access tokens are refused outside the plugin's own agent routes (§9.11) |
 
 ---
 
@@ -802,5 +923,6 @@ A plugin is compliant with Servio Protocol v1.0 when it satisfies all CRITICAL a
 
 ## Changelog
 
+- **1.2.0 (2026-11-20)** — new §5.7 redirect URI validation (exact match at authorize, approve/deny and token per RFC 9700 / OAuth 2.1; loopback port exception only for registered native-client loopback URIs; no redirect to an unvalidated URI, also on error/deny; requests never register URIs; PKCE `S256` only; conformance test); §5.2 Step 3 binds `client_id` + identical `redirect_uri`; §7.3 token-endpoint error codes with normative `400`/`401` status (never `200`); `state` returned unchanged; §9.11 agent tokens only on Servio routes; §9.12 CSRF on consent/confirmation forms; RULE-013..017. §6.5.1 user confirmation now MUST for destructive/financial tools, same-host `confirm_url`/`status_url`, session + CSRF + `POST`, user-created revocable autonomy grant. Also: §6.5.1 user confirmation (`user-confirm-v1`): manifest `confirmation` / `risk` per tool + top-level `confirmation` descriptor, 202 `confirmation_required` envelope with `preview` / `confirm_url` / `status_url`, user-only confirm step, single-use + replay-safe re-submission, optional per-user/tool/client autonomy grant, agent handling rules; error codes `confirmation_*`. Reference: GoldT WebMCP Bridge 1.2.13.
 - **1.1.0 (2026-11-08)** — `auth.revocation_url` REQUIRED; Section 5.2 Step 5 rewritten as an RFC 7009 contract with a conformance test; `auth.revoke_url` deprecated as an alias.
 - **1.0.0 (2026-06-16)** — initial specification.
